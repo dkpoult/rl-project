@@ -35,7 +35,7 @@ def frame_stack_to_tensors(frames, use_glyphs = False, combine = True, flatten =
     else:
         to_return = []
         for i in range(len(tensors[0])):
-            to_return.append(torch.stack([frame[i] for frame in tensors]))
+            to_return.append(torch.cat([frame[i] for frame in tensors]))
         return to_return
 
 
