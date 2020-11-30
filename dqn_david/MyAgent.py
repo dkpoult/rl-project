@@ -3,6 +3,8 @@ from shared.AbstractAgent import AbstractAgent
 import torch
 from torch import nn, FloatTensor, LongTensor
 import os
+from os import path
+import numpy as np
 
 if torch.cuda.is_available():
     device = "cuda:0"
@@ -10,9 +12,22 @@ else:
     device = "cpu"
 device = torch.device(device)
 
+def observation_to_input(observation):
+    """
+    Takes an observation and transforms it into the format
+    to be stored in the buffer and/or provided to our model.
+    """
+
+    # Just takes the basic data, doesn't do anything
+    # fancy for now.
+    glyphs = np.array(observation["glyphs"])
+    stats = np.array(observation["blstats"])
+
+    return [glyphs, stats]
+
 class MyAgent(AbstractAgent):
     def __init__(self, observation_space, action_space, learning_rate = 1e-3,
-            discount = 1.0, batch_size = 32, replay_buffer = None, train = False, from_file = False):
+            discount = 1.0, batch_size = 32, replay_buffer = None, train = False, from_file = True):
         
         print("Creating agent in", "train mode" if train else "play mode")
         
@@ -29,8 +44,10 @@ class MyAgent(AbstractAgent):
 
         # Load the weights from a file if they exists
         if from_file:
+            print("Trying to load from file.")
             curr_path = path.abspath(path.dirname(__file__))
             if os.path.exists(os.path.join(curr_path, "models/dqn_trained.pt")):
+                print("Found a file to load from!")
                 self.pred_model.load_state_dict(torch.load(os.path.join(curr_path, "models/dqn_trained.pt")))
                 self.update_target_network()
             else:
@@ -42,10 +59,12 @@ class MyAgent(AbstractAgent):
 
         print("Utilizing", device)
 
-    def act(self, state):
+    def act(self, observation):
         """
         Only intended for single observations, gives back an action index.
         """
+        state = observation_to_input(observation)
+
         # Gets the glyph and stats tensors suitably formatted
         x_glyphs = torch.FloatTensor([state[0]]).unsqueeze(0).to(device)
         x_stats = torch.FloatTensor([state[1]]).unsqueeze(0).to(device)

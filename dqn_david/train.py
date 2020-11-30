@@ -30,7 +30,7 @@ def train():
         "replay-buffer-size": int(1e5),  # replay buffer size
         "learning-rate": 1e-4,  # learning rate for the optimizer
         "discount-factor": 0.999,  # discount factor
-        "num-steps": int(2e1),  # total number of steps to run the environment for
+        "num-steps": int(2e6),  # total number of steps to run the environment for
         "batch-size": 64,  # number of transitions to optimize at the same time
         "learning-starts": 1e5,  # number of steps before learning starts
         "learning-freq": 1e2,  # number of iterations between every optimization step
