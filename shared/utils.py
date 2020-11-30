@@ -5,6 +5,10 @@ import numpy as np
 from collections import deque
 
 def frame_stack_to_tensors(frames, use_glyphs = False, combine = True, flatten = True):
+    """
+    Used to convert a set of observation frames into suitably formatted tensors.
+    Not actually used anymore because we don't stack frames.
+    """
     tensors = []
 
     for i, frame in enumerate(frames):
@@ -15,6 +19,7 @@ def frame_stack_to_tensors(frames, use_glyphs = False, combine = True, flatten =
             colors = torch.IntTensor(frame["colors"])
             world = torch.stack((chars, colors), dim = 0)
 
+        tensors.append(world)
         stats = torch.IntTensor(frame["blstats"])
         message = torch.IntTensor(frame["message"])
         inventory = torch.IntTensor(frame["inv_glyphs"])
@@ -73,8 +78,9 @@ class ReplayBuffer:
         Initialise a buffer of a given size for storing transitions
         :param size: the maximum number of transitions that can be stored
         """
-        self._storage = deque([], maxlen = size)
+        self._storage = []
         self._next_idx = 0
+        self.size = size
 
     def __len__(self):
         return len(self._storage)
@@ -90,7 +96,15 @@ class ReplayBuffer:
         """
         data = (state, action, reward, next_state, done)
 
-        self._storage.append(data)
+        if self._next_idx >= self.size:
+            self._next_idx = 0
+
+        if len(self._storage) < self.size:
+            self._storage.append(data)        
+        else:
+            self._storage[self._next_idx] = data
+
+        self._next_idx += 1
 
     def _encode_samples(self, indices):
         states, actions, rewards, next_states, dones = [], [], [], [], []

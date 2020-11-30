@@ -1,6 +1,5 @@
 from dqn_david.DQN import DQN
 from shared.AbstractAgent import AbstractAgent
-from shared.utils import FrameStack, frame_stack_to_tensors
 import torch
 from torch import nn, FloatTensor, LongTensor
 import os
@@ -17,17 +16,18 @@ class MyAgent(AbstractAgent):
         
         print("Creating agent in", "train mode" if train else "play mode")
         
+        # Store the basic information
         self.observation_space = observation_space
         self.action_space = action_space
         self.batch_size = batch_size
         self.discount = discount
-
-        self.frame_stack = FrameStack(4)
         self.replay_buffer = replay_buffer
 
+        # Set up our policy and target networks
         self.pred_model = DQN(out_size = action_space.n)
         self.target_model = DQN(out_size = action_space.n)
 
+        # Load the weights from a file if they exists
         if from_file:
             curr_path = path.abspath(path.dirname(__file__))
             if os.path.exists(os.path.join(curr_path, "models/dqn_trained.pt")):
@@ -36,42 +36,55 @@ class MyAgent(AbstractAgent):
             else:
                 print("No file found to load from, starting training from scratch.")
 
+        # Set up our optimiser and loss function
         self.optimiser = torch.optim.RMSprop(self.pred_model.parameters(), lr = learning_rate)
-        self.loss = nn.SmoothL1Loss()
+        self.loss = nn.MSELoss()
 
         print("Utilizing", device)
 
-    def act(self, observation):
-        self.frame_stack.append(observation)
+    def act(self, state):
+        """
+        Only intended for single observations, gives back an action index.
+        """
+        # Gets the glyph and stats tensors suitably formatted
+        x_glyphs = torch.FloatTensor([state[0]]).unsqueeze(0).to(device)
+        x_stats = torch.FloatTensor([state[1]]).unsqueeze(0).to(device)
 
-        x = frame_stack_to_tensors(self.frame_stack(), combine = False)
-        
-        values = self.pred_model([x])
+        # Get the action values
+        values = self.pred_model([x_glyphs, x_stats])
 
+        # Give back the best
         return values.argmax().item()
 
     def optimise_td_loss(self):
         """
-        Optimise the TD-error over a single minibatch of transitions
-        :return: the loss
+        Optimise on the TD-error over a minibatch of our stored experience.
         """
+        # Get a batch of experiences
         batch = self.replay_buffer(self.batch_size)
         (states, actions, rewards, next_states, dones) = batch
-        
-        states = [frame_stack_to_tensors(state, combine = False) for state in states]
-        next_states = [frame_stack_to_tensors(state, combine = False) for state in next_states]
 
+        # Get the features from our "current" states
+        x_glyphs = torch.stack([torch.from_numpy(state[0]).unsqueeze(0) for state in states]).float().to(device)
+        x_stats = torch.stack([torch.from_numpy(state[1]).unsqueeze(0) for state in states]).float().to(device)
+
+        # Get the features from our "next" states
+        next_x_glyphs = torch.stack([torch.from_numpy(state[0]).unsqueeze(0) for state in next_states]).float().to(device)
+        next_x_stats = torch.stack([torch.from_numpy(state[1]).unsqueeze(0) for state in next_states]).float().to(device)
+
+        # Get all our other TD information to tensor form
         actions = LongTensor(actions).to(device)
-        rewards = FloatTensor(rewards).to(device)
+        rewards = torch.tanh(FloatTensor(rewards).to(device))
         dones = FloatTensor(dones).to(device)
 
-        # Get the values of the current states' actions
-        current_values = self.pred_model(states)
+        # Get the values of the "current" states' actions
+        current_values = self.pred_model([x_glyphs, x_stats])
         # Get the state-action values that we actually took
         current_values = current_values.gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        # Get the maximum state-action values of the next states
-        next_values = self.target_model(next_states).max(axis = 1)[0]
+        with torch.no_grad():
+            # Get the maximum state-action values of the next states
+            next_values = self.target_model([next_x_glyphs, next_x_stats]).max(axis = 1)[0]
         
         # Calculate the targets
         targets = rewards + (1 - dones) * self.discount * next_values
